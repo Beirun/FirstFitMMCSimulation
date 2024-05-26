@@ -1,12 +1,8 @@
-
-using System.Drawing;
 using System.Drawing.Drawing2D;
-using System.IO;
-using System.Windows.Forms;
 
 namespace FirstFitMMCSimulation
 {
-    public partial class Form1 : Form
+    public partial class FirstFitSimulation : Form
     {
         int processNumber = 0;
         int repaintedBorder = 0;
@@ -17,19 +13,21 @@ namespace FirstFitMMCSimulation
         int processStartLocation = 0;
         int processEndLocation = 0;
         int processIDEntered = 0;
-        int waitingProcessNumber = 0;
         int[] memoryConfiguration;
         int[] memoryRequests;
         int[] allocationTimes;
         int[] completionTimes;
         bool isScrolled = false;
+        bool isPaused = false;
+        bool isBackHovered = false;
         bool[] isFinished;
         bool[] hasEntered;
         bool[] isBeingEntered;
         bool[] fromWaiting;
         bool[] isWaiting;
-        System.Windows.Forms.Timer timer;
+        System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer();
         Panel memoryConfigPanel;
+        Panel backButton;
         Label bottomLabel;
         TextBox[] memoryRequestTextBox;
         TextBox[] allocationTimeTextBox;
@@ -40,6 +38,7 @@ namespace FirstFitMMCSimulation
         Label[] tableLabels;
         Label[] processLabels;
         Label[] waitingProcessLabels;
+        Label[] memorySizeLabels;
         FlowLayoutPanel eventList;
         Color foreColor = ColorTranslator.FromHtml("#fff6bc");
         Color backColor = ColorTranslator.FromHtml("#212121");
@@ -48,19 +47,21 @@ namespace FirstFitMMCSimulation
         Color osProcessColor = Color.DarkSlateBlue;
         TableLayoutPanel processConfigTable;
 
-        public Form1()
+        public FirstFitSimulation()
         {
             InitializeComponent();
             this.StartPosition = FormStartPosition.CenterScreen;
             firstSlide();
             ClientSize = this.Size;
-            secondPanel.Location = new Point(Width, 0);
-            thirdPanel.Location = new Point(Width, 0);
+            secondPanel.Location = thirdPanel.Location = new Point(Width, 0);
             this.DoubleBuffered = true;
+            timer.Interval = 1000;
+            timer.Tick += Timer_Tick;
         }
 
         public void firstSlide()
         {
+            firstPanel.BringToFront();
             firstPanel.BackColor = backColor;
             firstPanel.Location = new Point(0, 0);
             firstPanel.Size = new Size(this.Width, this.Height);
@@ -113,17 +114,16 @@ namespace FirstFitMMCSimulation
             nextButton.MouseClick += NextButton_MouseClick;
             firstPanel.Paint += FirstPanel_Paint;
 
-            int horizontalGap = 0;
             errorMemory.Font = new Font("Calida Code", 10, FontStyle.Regular);
             errorMemory.ForeColor = Color.FromArgb(180, 70, 70);
             errorMemory.BackColor = memorySizeLabel.BackColor;
-            errorMemory.Location = new Point(memorySizePanel.Location.X+horizontalGap, memorySizePanel.Location.Y + memorySizePanel.Height + 10);
+            errorMemory.Location = new Point(memorySizePanel.Location.X, memorySizePanel.Location.Y + memorySizePanel.Height + 10);
             errorMemory.Visible = false;
 
             errorProcess.Font = new Font("Calida Code", 10, FontStyle.Regular);
             errorProcess.ForeColor = Color.FromArgb(180, 70, 70);
             errorProcess.BackColor = memorySizeLabel.BackColor;
-            errorProcess.Location = new Point(processNumberPanel.Location.X + horizontalGap, processNumberPanel.Location.Y +memorySizePanel.Height + 10);
+            errorProcess.Location = new Point(processNumberPanel.Location.X, processNumberPanel.Location.Y +memorySizePanel.Height + 10);
             errorProcess.Visible = false;
         }
 
@@ -209,10 +209,21 @@ namespace FirstFitMMCSimulation
 
         public void secondSlide()
         {
+            secondPanel.BringToFront();
             secondPanel.BackColor = backColor;
             secondPanel.Location = new Point(0, 0);
             secondPanel.Dock = DockStyle.None;
             secondPanel.Size = new Size(firstPanel.Width, firstPanel.Height);
+
+            Panel backButton = new Panel();
+            backButton.Paint += BackButton_Paint;
+            backButton.BackColor = secondPanel.BackColor;
+            backButton.Size = new Size(100, 100);
+            backButton.Location = new Point(10, 10);
+            backButton.Click += SecondBackButton_Click;
+            backButton.MouseEnter += (sender, e) => { isBackHovered = true; backButton.Refresh(); };
+            backButton.MouseLeave += (sender, e) => { isBackHovered = false; backButton.Refresh(); };
+            secondPanel.Controls.Add(backButton);
 
             processConfigTable = new TableLayoutPanel();
             processConfigTable.RowCount = processNumber + 1;
@@ -235,8 +246,6 @@ namespace FirstFitMMCSimulation
             Font font = new Font("Arial", 64, FontStyle.Bold);
             int fontSize = 64;
 
-            
-
             while (true)
             {
                 if (TextRenderer.MeasureText("Test", font).Height < (processConfigTable.Height / (processNumber + 1)) - (processConfigTable.Height / (processNumber + 1) / 3)) break;
@@ -253,7 +262,6 @@ namespace FirstFitMMCSimulation
                 processLabels[i].ForeColor = foreColor;
                 processLabels[i].Anchor = AnchorStyles.None;
                 processConfigTable.Controls.Add(processLabels[i], 0, i + 1);
-
                 
                 memoryRequestTextBox[i] = new TextBox();
                 memoryRequestTextBox[i].Multiline = false;
@@ -270,7 +278,6 @@ namespace FirstFitMMCSimulation
                 memoryRequestTextBox[i].Leave += AddKB_Leave;
                 memoryRequestTextBox[i].KeyPress += EnterKey_Press;
                 processConfigTable.Controls.Add(memoryRequestTextBox[i], 1, i + 1);
-
                 
                 allocationTimeTextBox[i] = new TextBox();
                 allocationTimeTextBox[i].Multiline = false;
@@ -287,7 +294,6 @@ namespace FirstFitMMCSimulation
                 allocationTimeTextBox[i].Enter += AddMSEC_Enter;
                 allocationTimeTextBox[i].Leave += AddMSEC_Leave;
                 processConfigTable.Controls.Add(allocationTimeTextBox[i], 2, i + 1);
-
                 
                 completionTimeTextBox[i] = new TextBox();
                 completionTimeTextBox[i].Multiline = false;
@@ -301,17 +307,17 @@ namespace FirstFitMMCSimulation
                 completionTimeTextBox[i].Tag = i;
                 completionTimeTextBox[i].Name = "CompletionTime";
                 completionTimeTextBox[i].KeyPress += EnterKey_Press;
-                completionTimeTextBox[i].Enter += AddMSEC2_Enter;
-                completionTimeTextBox[i].Leave += AddMSEC2_Leave;
+                completionTimeTextBox[i].Enter += AddMSEC_Enter;
+                completionTimeTextBox[i].Leave += AddMSEC_Leave;
                 processConfigTable.Controls.Add(completionTimeTextBox[i], 3, i + 1);
-
             }
             fontSize = 64;
             for (int i = 0; i < 4; i++)
             {
                 while (true)
                 {
-                    if (TextRenderer.MeasureText(labelNames[i], font).Width < processConfigTable.GetColumnWidths()[i] && TextRenderer.MeasureText(labelNames[i], font).Height < processConfigTable.GetRowHeights()[0]) break;
+                    if (TextRenderer.MeasureText(labelNames[i], font).Width < processConfigTable.GetColumnWidths()[i] && 
+                        TextRenderer.MeasureText(labelNames[i], font).Height < processConfigTable.GetRowHeights()[0]) break;
                     else font = new Font("Arial", fontSize-=2, FontStyle.Bold);
                 }
                 tableLabels[i] = new Label();
@@ -342,6 +348,11 @@ namespace FirstFitMMCSimulation
             processConfigTable.BringToFront();
         }
 
+        private void SecondBackButton_Click(object? sender, EventArgs e)
+        {
+            firstSlide();
+        }
+
         private void EnterKey_Press(object? sender, KeyPressEventArgs e)
         {
             TextBox? textBox = sender as TextBox;
@@ -364,7 +375,7 @@ namespace FirstFitMMCSimulation
                 {
                     if (index == completionTimeTextBox.Length - 1)
                     {
-                        AddMSEC2_Leave(sender, e);
+                        AddMSEC_Leave(sender, e);
                         proceedButton.PerformClick();
                     }
                     else completionTimeTextBox[index + 1].Focus();
@@ -387,7 +398,19 @@ namespace FirstFitMMCSimulation
         private void AddMSEC_Leave(object? sender, EventArgs e)
         {
             TextBox? textBox = sender as TextBox;
+            int i = (int)textBox.Tag;
             textBox.Text = textBox.Text.Trim();
+            try { 
+                int number = Convert.ToInt32(textBox.Text);
+                if(number < 0) textBox.ForeColor = Color.Red;
+                if (textBox == completionTimeTextBox[i])
+                {
+                    if (Convert.ToInt32(allocationTimeTextBox[i].Text.Substring(0, allocationTimeTextBox[i].TextLength - 5).Trim()) > 
+                        Convert.ToInt32(completionTimeTextBox[i].Text)) completionTimeTextBox[i].ForeColor = Color.Red;
+                }
+            }
+            catch { textBox.ForeColor = Color.Red; }
+            
             if (!textBox.Text.Contains(" msec") && textBox.Text.Trim() != "") textBox.Text += " msec";
             textBox.Text = textBox.Text.Trim();
         }
@@ -395,31 +418,20 @@ namespace FirstFitMMCSimulation
         private void AddMSEC_Enter(object? sender, EventArgs e)
         {
             TextBox? textBox = sender as TextBox;
+            textBox.ForeColor = foreColor;
             textBox.Text = textBox.Text.Trim();
             if (textBox.Text.Contains(" msec")) textBox.Text = textBox.Text.Substring(0, textBox.TextLength - 5);
             textBox.Text = textBox.Text.Trim();
         }
 
-        private void AddMSEC2_Leave(object? sender, EventArgs e)
-        {
-            TextBox? textBox = sender as TextBox;
-            textBox.Text = textBox.Text.Trim();
-            if (!textBox.Text.Contains(" msec") && textBox.Text.Trim() != "") textBox.Text += " msec";
-            textBox.Text = textBox.Text.Trim();
-        }
-
-        private void AddMSEC2_Enter(object? sender, EventArgs e)
-        {
-            TextBox? textBox = sender as TextBox;
-            textBox.Text = textBox.Text.Trim();
-            if (textBox.Text.Contains(" msec")) textBox.Text = textBox.Text.Substring(0, textBox.TextLength - 5);
-            textBox.Text = textBox.Text.Trim();
-        }
 
         private void AddKB_Leave(object? sender, EventArgs e)
         {
             TextBox? textBox = sender as TextBox;
             textBox.Text = textBox.Text.Trim();
+            try { int number = Convert.ToInt32(textBox.Text); if (number < 1) textBox.ForeColor = Color.Red;
+            }
+            catch { textBox.ForeColor  = Color.Red; }
             if (!textBox.Text.Contains(" KB") && textBox.Text.Trim() != "") textBox.Text += " KB";
             textBox.Text = textBox.Text.Trim();
         }
@@ -428,44 +440,76 @@ namespace FirstFitMMCSimulation
         {
             TextBox? textBox = sender as TextBox;
             textBox.Text = textBox.Text.Trim();
+            textBox.ForeColor = foreColor;
             if (textBox.Text.Contains(" KB")) textBox.Text = textBox.Text.Substring(0, textBox.TextLength - 3);
             textBox.Text = textBox.Text.Trim();
         }
         private void proceedButton_Click(object sender, EventArgs e)
         {
+            thirdPanel.Size = new Size(firstPanel.Width, firstPanel.Height);
+            playButton.MouseClick += PlayButton_MouseClick;
+            playButton.Paint += PlayButton_Paint;
+            playButton.Size = new Size(75, 75);
+            playButton.FlatStyle = FlatStyle.Flat;
+            playButton.Location = new Point(thirdPanel.Width / 2 - playButton.Width / 2, thirdPanel.Height - playButton.Height - 10);
+            playButton.BackColor = foreColor;
+
+            backButton = new Panel();
+            backButton.Paint += BackButton_Paint;
+            backButton.BackColor = secondPanel.BackColor;
+            backButton.Size = new Size(100, 100);
+            backButton.Location = new Point(10, 10);
+            backButton.Click += BackButton_Click;
+            backButton.MouseEnter += (sender, e) => { isBackHovered = true; backButton.Refresh(); };
+            backButton.MouseLeave += (sender, e) => { isBackHovered = false; backButton.Refresh(); };
+
+            isPaused = false;
             memoryRequests = new int[processNumber];
             allocationTimes = new int[processNumber];
             completionTimes = new int[processNumber];
             memoryConfiguration = new int[memorySize];
-            isFinished = new bool[processNumber + 1];
-            isWaiting = new bool[processNumber + 1];
-            hasEntered = new bool[processNumber + 1];
-            fromWaiting = new bool[processNumber + 1];
+            isFinished = new bool[processNumber + 1]; 
+            isWaiting = new bool[processNumber + 1]; 
+            hasEntered = new bool[processNumber + 1]; 
+            fromWaiting = new bool[processNumber + 1]; 
             isBeingEntered = new bool[processNumber + 1];
+            memorySizeLabels = new Label[processNumber + 1];
             waitingProcessLabels = new Label[processNumber];
-            for (int i = 0; i < processNumber; i++) isFinished[i] = false;
-            for (int i = 0; i < processNumber; i++) fromWaiting[i] = false;
-            for (int i = 0; i < processNumber; i++) hasEntered[i] = false;
-            for (int i = 0; i < 99; i++) memoryConfiguration[i] = -1;
+            for (int i = 0; i < 100; i++) memoryConfiguration[i] = -1;
             for (int i = 0; i < processNumber; i++)
             {
-                memoryRequests[i] = Convert.ToInt32(memoryRequestTextBox[i].Text.Substring(0, memoryRequestTextBox[i].TextLength - 3).Trim());
-                allocationTimes[i] = Convert.ToInt32(allocationTimeTextBox[i].Text.Substring(0, allocationTimeTextBox[i].TextLength - 5).Trim());
-                completionTimes[i] = Convert.ToInt32(completionTimeTextBox[i].Text.Substring(0, completionTimeTextBox[i].TextLength - 5).Trim());
+                isFinished[i] = false;
+                fromWaiting[i] = false;
+                hasEntered[i] = false;
+                try
+                {
+                    memoryRequests[i] = Convert.ToInt32(memoryRequestTextBox[i].Text.Substring(0, memoryRequestTextBox[i].TextLength - 3).Trim());
+                    allocationTimes[i] = Convert.ToInt32(allocationTimeTextBox[i].Text.Substring(0, allocationTimeTextBox[i].TextLength - 5).Trim());
+                    completionTimes[i] = Convert.ToInt32(completionTimeTextBox[i].Text.Substring(0, completionTimeTextBox[i].TextLength - 5).Trim());
+                }catch { return; }
             }
             for (int i = 0; i < processNumber; i++) if (longestCompletionTime < completionTimes[i]) longestCompletionTime = completionTimes[i];
             thirdSlide();
         }
         public void thirdSlide()
         {
+            secondsElapsed = 0;
+            thirdPanel.BringToFront();
+            thirdPanel.Controls.Clear();
+            memoryConfig.Controls.Clear();
+            waitingProcessPanel.Controls.Clear();
+            if (memoryConfigPanel != null) memoryConfigPanel.Controls.Clear();
+            thirdPanel.Controls.Add(playButton);
+            thirdPanel.Controls.Add(timerLabel);
+            thirdPanel.Controls.Add(memoryConfig);
+            thirdPanel.Controls.Add(waitingProcessPanel);
             thirdPanel.BackColor = backColor;
             thirdPanel.Location = new Point(0, 0);
             thirdPanel.Dock = DockStyle.None;
-            thirdPanel.Size = new Size(firstPanel.Width, firstPanel.Height);
 
-            roundButton1.MouseClick += RoundButton_MouseClick;
+            thirdPanel.Controls.Add(backButton);
+
             memoryConfig.BackColor = thirdPanel.BackColor;
-            //memoryConfig.BackColor = Color.ForestGreen;
             memoryConfig.Size = new Size(500, 700);
             memoryConfig.Location = new Point(thirdPanel.Width / 2 - memoryConfig.Width / 2, thirdPanel.Height / 2 - memoryConfig.Height / 2 );
 
@@ -509,10 +553,9 @@ namespace FirstFitMMCSimulation
             eventList.BackColor = waitingProcessColor;
             eventList.FlowDirection = FlowDirection.TopDown;
             eventList.WrapContents = false;
-            eventList.Location = new Point(memoryConfig.Left + memoryConfig.Width + 75, 215);
+            eventList.Location = new Point(memoryConfig.Left + memoryConfig.Width + 75, 150);
             thirdPanel.Controls.Add(eventList);
 
-            roundButton1.Location = new Point(thirdPanel.Width / 2 - roundButton1.Width / 2, thirdPanel.Height - roundButton1.Height);
 
             processConfigPanels = new Panel[processNumber + 1];
             processConfigLabels = new Label[processNumber + 1];
@@ -528,27 +571,43 @@ namespace FirstFitMMCSimulation
 
             processConfigLabels[processNumber] = new Label();
             processConfigLabels[processNumber].Text = "OS";
-            Font font = new Font("Arial", 64, FontStyle.Bold);
-            int fontSize = 32;
+
+            memorySizeLabels[processNumber] = new Label();
+            memorySizeLabels[processNumber].Text = "(100 KB)";
+            Font font = new Font("Arial", 32, FontStyle.Bold);
+            int fontSize = 48;
 
             while (true)
             {
-                if (TextRenderer.MeasureText("OS", font).Height < processConfigPanels[processNumber].Height - (processConfigPanels[processNumber].Height / 8)) break;
+                if (TextRenderer.MeasureText("OS", font).Height + TextRenderer.MeasureText(memorySizeLabels[processNumber].Text, 
+                    new Font("Arial", fontSize - (fontSize / 2 + fontSize / 5), FontStyle.Bold)).Height 
+                    < processConfigPanels[processNumber].Height - (processConfigPanels[processNumber].Height / 8)) break;
                 else font = new Font("Arial", fontSize -= 2, FontStyle.Bold);
             }
             processConfigLabels[processNumber].Font = font;
             processConfigLabels[processNumber].ForeColor = foreColor;
-            processConfigLabels[processNumber].Size = new Size(TextRenderer.MeasureText("OS", font).Width, TextRenderer.MeasureText("OS", font).Height);
-            processConfigLabels[processNumber].Location = new Point(processConfigPanels[processNumber].Width / 2 - processConfigLabels[processNumber].Width / 2, processConfigPanels[processNumber].Height / 2 - processConfigLabels[processNumber].Height / 2);
+            processConfigLabels[processNumber].Size = TextRenderer.MeasureText("OS", font);
+            processConfigLabels[processNumber].Location = new Point(processConfigPanels[processNumber].Width / 2 - processConfigLabels[processNumber].Width / 2, 
+                processConfigPanels[processNumber].Height / 2 - processConfigLabels[processNumber].Height / 2);
             processConfigLabels[processNumber].BackColor = osProcessColor;
             processConfigPanels[processNumber].Controls.Add(processConfigLabels[processNumber]);
+            processConfigLabels[processNumber].Top  -= processConfigLabels[processNumber].Top/2;
+
+            memorySizeLabels[processNumber].Font = new Font("Arial", fontSize - (fontSize/2 + fontSize / 5), FontStyle.Bold);
+            memorySizeLabels[processNumber].ForeColor = foreColor;
+            memorySizeLabels[processNumber].Size = TextRenderer.MeasureText(memorySizeLabels[processNumber].Text, memorySizeLabels[processNumber].Font);
+            memorySizeLabels[processNumber].Location = new Point(processConfigPanels[processNumber].Width / 2 - memorySizeLabels[processNumber].Width / 2, 
+                processConfigLabels[processNumber].Top + processConfigLabels[processNumber].Height - processConfigLabels[processNumber].Height/15);
+            processConfigPanels[processNumber].Controls.Add(memorySizeLabels[processNumber]);
+            memorySizeLabels[processNumber].BringToFront();
 
             processMemorySizeLabels[0] = new Label();
             processMemorySizeLabels[0].Text = "0 KB";
             processMemorySizeLabels[0].Font = new Font("Calida Code", 10, FontStyle.Bold);
             processMemorySizeLabels[0].ForeColor = foreColor;
-            processMemorySizeLabels[0].Size = new Size(TextRenderer.MeasureText(processMemorySizeLabels[0].Text, processMemorySizeLabels[0].Font).Width, TextRenderer.MeasureText(processMemorySizeLabels[0].Text, processMemorySizeLabels[0].Font).Height);
-            processMemorySizeLabels[0].Location = new Point(memoryConfigPanel.Location.X + memoryConfigPanel.Width + 10, memoryConfigPanel.Location.Y - processMemorySizeLabels[0].Height / 2);
+            processMemorySizeLabels[0].Size = TextRenderer.MeasureText(processMemorySizeLabels[0].Text, processMemorySizeLabels[0].Font);
+            processMemorySizeLabels[0].Location = new Point(memoryConfigPanel.Location.X + memoryConfigPanel.Width + 10, memoryConfigPanel.Location.Y - 
+                processMemorySizeLabels[0].Height / 2);
             processMemorySizeLabels[0].BackColor = backColor;
             memoryConfig.Controls.Add(processMemorySizeLabels[0]);
 
@@ -556,8 +615,9 @@ namespace FirstFitMMCSimulation
             processMemorySizeLabels[1].Text = "100 KB";
             processMemorySizeLabels[1].Font = new Font("Calida Code", 10, FontStyle.Bold);
             processMemorySizeLabels[1].ForeColor = foreColor;
-            processMemorySizeLabels[1].Size = new Size(TextRenderer.MeasureText(processMemorySizeLabels[1].Text, processMemorySizeLabels[1].Font).Width, TextRenderer.MeasureText(processMemorySizeLabels[1].Text, processMemorySizeLabels[1].Font).Height);
-            processMemorySizeLabels[1].Location = new Point(memoryConfigPanel.Location.X + memoryConfigPanel.Width + 10, memoryConfigPanel.Location.Y + processConfigPanels[processNumber].Height - processMemorySizeLabels[1].Height / 2);
+            processMemorySizeLabels[1].Size = TextRenderer.MeasureText(processMemorySizeLabels[1].Text, processMemorySizeLabels[1].Font);
+            processMemorySizeLabels[1].Location = new Point(memoryConfigPanel.Location.X + memoryConfigPanel.Width + 10, memoryConfigPanel.Location.Y + 
+                processConfigPanels[processNumber].Height - processMemorySizeLabels[1].Height / 2);
             processMemorySizeLabels[1].BackColor = backColor;
             memoryConfig.Controls.Add(processMemorySizeLabels[1]);
 
@@ -565,21 +625,77 @@ namespace FirstFitMMCSimulation
             processMemorySizeLabels[processMemorySizeLabels.Length - 1].Text = memorySize + " KB";
             processMemorySizeLabels[processMemorySizeLabels.Length - 1].Font = new Font("Calida Code", 10, FontStyle.Bold);
             processMemorySizeLabels[processMemorySizeLabels.Length - 1].ForeColor = foreColor;
-            processMemorySizeLabels[processMemorySizeLabels.Length - 1].Size = new Size(TextRenderer.MeasureText(processMemorySizeLabels[processMemorySizeLabels.Length - 1].Text, processMemorySizeLabels[processMemorySizeLabels.Length - 1].Font).Width, TextRenderer.MeasureText(processMemorySizeLabels[processMemorySizeLabels.Length - 1].Text, processMemorySizeLabels[processMemorySizeLabels.Length - 1].Font).Height);
-            processMemorySizeLabels[processMemorySizeLabels.Length - 1].Location = new Point(memoryConfigPanel.Location.X + memoryConfigPanel.Width + 10, memoryConfigPanel.Location.Y + memoryConfigPanel.Height - processMemorySizeLabels[processMemorySizeLabels.Length - 1].Height / 2);
+            processMemorySizeLabels[processMemorySizeLabels.Length - 1].Size = TextRenderer.MeasureText(processMemorySizeLabels[processMemorySizeLabels.Length - 1].Text,
+                processMemorySizeLabels[processMemorySizeLabels.Length - 1].Font);
+            processMemorySizeLabels[processMemorySizeLabels.Length - 1].Location = new Point(memoryConfigPanel.Location.X + memoryConfigPanel.Width + 10, memoryConfigPanel.Location.Y 
+                + memoryConfigPanel.Height - processMemorySizeLabels[processMemorySizeLabels.Length - 1].Height / 2);
             processMemorySizeLabels[processMemorySizeLabels.Length - 1].BackColor = backColor;
-            memoryConfig.Controls.Add(processMemorySizeLabels[processMemorySizeLabels.Length - 1]);
-            timer = new System.Windows.Forms.Timer();
-            timer.Interval = 1000;
-            timer.Tick += Timer_Tick;
+           memoryConfig.Controls.Add(processMemorySizeLabels[processMemorySizeLabels.Length - 1]);
             timer.Start();
-
         }
 
-        private void RoundButton_MouseClick(object? sender, MouseEventArgs e)
+        private void PlayButton_Paint(object? sender, PaintEventArgs e)
         {
-            if (timer.Enabled)  timer.Stop();
-            else timer.Start();
+            if (isPaused || secondsElapsed == longestCompletionTime) e.Graphics.DrawImage(Image.FromFile("C:\\Users\\Beirun\\source\\repos\\FirstFitMMCSimulation\\FirstFitMMCSimulation\\play.png"), 15, 13, 50, 50);
+            else e.Graphics.DrawImage(Image.FromFile("C:\\Users\\Beirun\\source\\repos\\FirstFitMMCSimulation\\FirstFitMMCSimulation\\pause.png"), 18, 18, 40, 40);
+        }
+
+        private void BackButton_Paint(object? sender, PaintEventArgs e)
+        {
+            Graphics g = e.Graphics;
+            if (!isBackHovered) g.DrawImage(Image.FromFile("C:\\Users\\Beirun\\source\\repos\\FirstFitMMCSimulation\\FirstFitMMCSimulation\\left.png"), 0, 0, 100, 100);
+            else g.DrawImage(Image.FromFile("C:\\Users\\Beirun\\source\\repos\\FirstFitMMCSimulation\\FirstFitMMCSimulation\\hover.png"), 0, 0, 100, 100);
+        }
+
+        private void BackButton_Click(object sender, EventArgs e)
+        {
+            secondSlide();
+        }
+
+        private void PlayButton_MouseClick(object sender, MouseEventArgs e)
+        {
+            if (secondsElapsed == longestCompletionTime + 1)
+            {
+                secondsElapsed = 0;
+                isPaused = false;
+                memoryConfiguration = new int[memorySize];
+                isFinished = new bool[processNumber + 1];
+                isWaiting = new bool[processNumber + 1];
+                hasEntered = new bool[processNumber + 1];
+                fromWaiting = new bool[processNumber + 1];
+                isBeingEntered = new bool[processNumber + 1];
+                memorySizeLabels = new Label[processNumber + 1];
+                waitingProcessLabels = new Label[processNumber];
+                for (int i = 0; i < 100; i++) memoryConfiguration[i] = -1;
+                for (int i = 0; i < processNumber; i++)
+                {
+                    isFinished[i] = false;
+                    fromWaiting[i] = false;
+                    hasEntered[i] = false;
+                }
+                thirdSlide();
+                return;
+            }
+            if (timer.Enabled)
+            {
+
+                if (secondsElapsed < longestCompletionTime)
+                {
+                    isPaused = true;
+                    timer.Stop();
+                    playButton.Refresh();
+                }
+            }
+            else
+            {
+                if(secondsElapsed < longestCompletionTime)
+                {
+                    timer.Start();
+                    isPaused = false;
+                    playButton.Refresh();
+                }
+            }
+            
 
         }
 
@@ -588,14 +704,19 @@ namespace FirstFitMMCSimulation
             timerLabel.Text = secondsElapsed + " msec";
             for (int i = 0; i < processNumber; i++)
             {
-                if (processConfigPanels[i] !=null && secondsElapsed == completionTimes[i] && completionTimes[i] != allocationTimes[i] && !isWaiting[i])
+                for(int m = 0; m < processNumber; m++)
                 {
+                    if (processConfigPanels[m] != null && secondsElapsed == completionTimes[m] && 
+                        completionTimes[m] != allocationTimes[m] && !isWaiting[m] && !isFinished[m])
+                    {
 
-                    processConfigLabels[i].Hide();
-                    processConfigPanels[i].BackColor = memoryConfigPanel.BackColor;
-                    addEvent(i, "Completed");
+                        processConfigLabels[m].Hide();
+                        memorySizeLabels[m].Hide();
+                        processConfigPanels[m].BackColor = memoryConfigPanel.BackColor;
+                        addEvent(m, "Completed");
 
-                    isFinished[i] = true;
+                        isFinished[m] = true;
+                    }
                 }
                 for(int m = 0; m < processNumber; m++)
                 {
@@ -603,43 +724,9 @@ namespace FirstFitMMCSimulation
                     {
                         int process = Convert.ToInt32(waitingProcessLabels[m].Text.Substring(1)) - 1;
 
-                        freeMemory = 0;
-                        for (int j = 99; j < memorySize; j++)
-                        {
-                            if (memoryConfiguration[j] == 0)
-                            {
+                        freeMemory = getFreeMemory(process);
 
-                                if (memoryConfiguration[j - 1] == 0)
-                                {
-                                    freeMemory++;
-                                    processIDEntered = 0;
-                                }
-                                else freeMemory = 0;
-                            }
-                            else
-                            {
-                                for (int k = 1; k <= processNumber; k++)
-                                {
-                                    if (memoryConfiguration[j] == k && isFinished[k - 1] && !isBeingEntered[k - 1])
-                                    {
-
-                                        if (memoryConfiguration[j - 1] == k && isFinished[k - 1])
-                                        {
-                                            freeMemory++;
-                                            processIDEntered = k;
-                                        }
-                                        else freeMemory = 0;
-
-                                    }
-                                }
-                            }
-                            if (freeMemory == memoryRequests[process])
-                            {
-                                processEndLocation = j + 1;
-                                break;
-                            }
-                        }
-                        if(freeMemory >= memoryRequests[process])
+                        if (freeMemory >= memoryRequests[process])
                         {
                             isWaiting[m] = false;
                             fromWaiting[process] = true;
@@ -648,47 +735,10 @@ namespace FirstFitMMCSimulation
                         }
                     }
                 }
-
-
                 if (secondsElapsed == allocationTimes[i] || (fromWaiting[i] && secondsElapsed < completionTimes[i]))
                 {
+                    freeMemory = getFreeMemory(i);
 
-                    freeMemory = 0;
-                    for (int j = 99; j < memorySize; j++)
-                    {
-                        if (memoryConfiguration[j] == 0)
-                        {
-
-                            if (memoryConfiguration[j - 1] == 0)
-                            {
-                                freeMemory++;
-                                processIDEntered = 0;
-                            }
-                            else freeMemory = 0;
-                        }
-                        else
-                        {
-                            for (int k = 1; k <= processNumber; k++)
-                            {
-                                if (memoryConfiguration[j] == k && isFinished[k - 1] && !isBeingEntered[k - 1])
-                                {
-
-                                    if (memoryConfiguration[j - 1] == k && isFinished[k - 1])
-                                    {
-                                        freeMemory++;
-                                        processIDEntered = k;
-                                    }
-                                    else freeMemory = 0;
-
-                                }
-                            }
-                        }
-                        if (freeMemory == memoryRequests[i])
-                        {
-                            processEndLocation = j+1;
-                            break;
-                        }
-                    }
                     if (freeMemory < memoryRequests[i])
                     {
                         if (isWaiting[i]) continue;
@@ -713,12 +763,7 @@ namespace FirstFitMMCSimulation
                         waitingProcessPanel.Controls.Add(waitingProcessLabels[i]);
                     }
                     else if (!hasEntered[i]) {
-                        if (fromWaiting[i])
-                        {
-                            waitingProcessPanel.Controls.Remove(waitingProcessLabels[i]);
-                            fromWaiting[i] = false;
-                        }
-
+                        
                         hasEntered[i] = true;
                         if (processIDEntered != 0) isBeingEntered[processIDEntered - 1] = true;
                         processStartLocation = processEndLocation - freeMemory;
@@ -733,50 +778,166 @@ namespace FirstFitMMCSimulation
                         processConfigPanels[i].Paint += PaintBorder;
                         if (processIDEntered == 0) memoryConfigPanel.Controls.Add(processConfigPanels[i]);
                         else processConfigPanels[processIDEntered - 1].Controls.Add(processConfigPanels[i]);
+                        
                         processConfigLabels[i] = new Label();
                         processConfigLabels[i].Text = "P" + (i + 1);
-                        Font font = new Font("Arial", 25, FontStyle.Bold);
-                        int fontSize = 25;
+
+                        memorySizeLabels[i] = new Label();
+                        memorySizeLabels[i].Text = "(" + memoryRequests[i] + " KB)";
+                        Font font = new Font("Arial", 32, FontStyle.Bold);
+                        int fontSize = 48;
 
                         while (true)
                         {
-                            if (TextRenderer.MeasureText(processConfigLabels[i].Text, font).Height < processConfigPanels[i].Height - (processConfigPanels[i].Height / 8)) break;
-                            else font = new Font("Arial", fontSize -= 2, FontStyle.Bold);
+                            if (TextRenderer.MeasureText(processConfigLabels[i].Text, font).Height + 
+                                TextRenderer.MeasureText(memorySizeLabels[i].Text, new Font("Arial", fontSize - (fontSize / 2 + fontSize / 5), FontStyle.Bold)).Height < 
+                                processConfigPanels[i].Height - (processConfigPanels[i].Height / 8)) break;
+                            else font = new Font("Arial", fontSize --, FontStyle.Bold);
                         }
                         processConfigLabels[i].Font = font;
                         processConfigLabels[i].ForeColor = foreColor;
-                        processConfigLabels[i].Size = new Size(TextRenderer.MeasureText(processConfigLabels[i].Text, font).Width, TextRenderer.MeasureText(processConfigLabels[i].Text, font).Height);
-                        processConfigLabels[i].Location = new Point(processConfigPanels[i].Width / 2 - processConfigLabels[i].Width / 2, processConfigPanels[i].Height / 2 - processConfigLabels[i].Height / 2);
+                        processConfigLabels[i].Size = TextRenderer.MeasureText(processConfigLabels[i].Text, font);
+                        processConfigLabels[i].Location = new Point(processConfigPanels[i].Width / 2 - processConfigLabels[i].Width / 2, 
+                            processConfigPanels[i].Height / 2 - processConfigLabels[i].Height / 2);
                         processConfigLabels[i].BackColor = osProcessColor;
                         processConfigPanels[i].Controls.Add(processConfigLabels[i]);
-                        processMemorySizeLabels[i] = new Label();
-                        processMemorySizeLabels[i].Text = processEndLocation + " KB";
-                        processMemorySizeLabels[i].Font = new Font("Calida Code", 10, FontStyle.Bold);
-                        processMemorySizeLabels[i].ForeColor = foreColor;
-                        processMemorySizeLabels[i].Size = new Size(TextRenderer.MeasureText(processMemorySizeLabels[i].Text, processMemorySizeLabels[i].Font).Width, TextRenderer.MeasureText(processMemorySizeLabels[i].Text, processMemorySizeLabels[i].Font).Height);
-                        if (processIDEntered == 0) processMemorySizeLabels[i].Location = new Point(memoryConfigPanel.Location.X + memoryConfigPanel.Width + 10, memoryConfigPanel.Location.Y + (processConfigPanels[i].Location.Y + processConfigPanels[i].Height) - processMemorySizeLabels[i].Height / 2);
-
-                        else processMemorySizeLabels[i].Location = new Point(memoryConfigPanel.Location.X + memoryConfigPanel.Width + 10, memoryConfigPanel.Location.Y + (memoryConfigPanel.Height * processEndLocation / memorySize) - processMemorySizeLabels[i].Height / 2);
+                        processConfigLabels[i].Top -= processConfigLabels[i].Top / 2;
 
 
-                        processMemorySizeLabels[i].BackColor = backColor;
-                        memoryConfig.Controls.Add(processMemorySizeLabels[i]);
-                        //MessageBox.Show(processEndLocation + " " + processStartLocation);
+                        memorySizeLabels[i].Font = new Font("Arial", fontSize - (fontSize/2 + fontSize / 5), FontStyle.Bold);
+                        memorySizeLabels[i].ForeColor = foreColor;
+                        memorySizeLabels[i].Size = TextRenderer.MeasureText(memorySizeLabels[i].Text, memorySizeLabels[i].Font);
+                        memorySizeLabels[i].Location = new Point(processConfigPanels[i].Width / 2 - memorySizeLabels[i].Width / 2, processConfigLabels[i].Top 
+                            + processConfigLabels[i].Height - processConfigLabels[i].Height/15);
+                        processConfigPanels[i].Controls.Add(memorySizeLabels[i]);
+                        memorySizeLabels[i].BringToFront();
+
+                        if (processEndLocation != memorySize)
+                        {
+                            processMemorySizeLabels[i] = new Label();
+                            processMemorySizeLabels[i].Text = processEndLocation + " KB";
+                            processMemorySizeLabels[i].Font = new Font("Calida Code", 10, FontStyle.Bold);
+                            processMemorySizeLabels[i].ForeColor = foreColor;
+                            processMemorySizeLabels[i].Size = TextRenderer.MeasureText(processMemorySizeLabels[i].Text, processMemorySizeLabels[i].Font);
+                            if (processIDEntered == 0) processMemorySizeLabels[i].Location = new Point(memoryConfigPanel.Location.X + memoryConfigPanel.Width + 10,
+                                memoryConfigPanel.Location.Y + (processConfigPanels[i].Location.Y + processConfigPanels[i].Height) - processMemorySizeLabels[i].Height / 2);
+                            else processMemorySizeLabels[i].Location = new Point(memoryConfigPanel.Location.X + memoryConfigPanel.Width + 10,
+                                memoryConfigPanel.Location.Y + (memoryConfigPanel.Height * processEndLocation / memorySize) - processMemorySizeLabels[i].Height / 2);
+
+                            processMemorySizeLabels[i].BackColor = backColor;
+                            memoryConfig.Controls.Add(processMemorySizeLabels[i]);
+                        }
                         memoryConfigPanel.Refresh();
-                        for (int j = processStartLocation-1; j < processEndLocation-1; j++) memoryConfiguration[j] = i + 1;
+                        for (int j = processStartLocation; j < processEndLocation; j++) memoryConfiguration[j] = i + 1;
+                        if (fromWaiting[i])
+                        {
+                            waitingProcessPanel.Controls.Remove(waitingProcessLabels[i]);
+                            fromWaiting[i] = false;
+                            i = 0;
+                        }
+
                     }
                 }
                 if (secondsElapsed == completionTimes[i] && !isWaiting[i])
                 {
-
                     processConfigLabels[i].Hide();
+                    memorySizeLabels[i].Hide();
                     processConfigPanels[i].BackColor = memoryConfigPanel.BackColor;
                     isFinished[i] = true;
                 }
-
             }
-            if (secondsElapsed >= longestCompletionTime) timer.Stop();
+            if (secondsElapsed >= longestCompletionTime)
+            {
+
+                timer.Stop();
+                for(int i = 0; i < processNumber; i++)
+                {
+                    if (isWaiting[i])
+                    {
+                        addEvent(i , "Terminated");
+                        waitingProcessPanel.Controls.Remove(waitingProcessLabels[i]);
+                    }
+                }
+                Label externalLabel = new Label();
+                externalLabel.Text = "Total External Fragmentation";
+                externalLabel.BackColor = backColor;
+                externalLabel.ForeColor = foreColor;
+                externalLabel.Font = new Font("Calida Code", 14, FontStyle.Bold);
+                externalLabel.Size = TextRenderer.MeasureText(externalLabel.Text, externalLabel.Font);
+                externalLabel.Location = new Point(eventList.Left + eventList.Width/2 - externalLabel.Width/2, eventList.Top + eventList.Height + 25);
+                thirdPanel.Controls.Add(externalLabel);
+
+                Label externalFragLabel = new Label();
+                int externalFrag = 0;
+                for(int i  = 100; i < memoryConfiguration.Length; i++) for(int j= 0; j < processNumber; j++) if (isBeingEntered[j] && j + 1 == memoryConfiguration[i]) externalFrag++;
+                
+                externalFragLabel.Text = externalFrag + " KB";
+                externalFragLabel.BackColor = backColor;
+                externalFragLabel.ForeColor = Color.DarkOrange;
+                externalFragLabel.Font = new Font("Arial", 28, FontStyle.Bold);
+                externalFragLabel.Size = TextRenderer.MeasureText(externalFragLabel.Text, externalFragLabel.Font);
+                externalFragLabel.Location = new Point(externalLabel.Left + externalLabel.Width / 2 - externalFragLabel.Width / 2, externalLabel.Top + externalLabel.Height + 10);
+                thirdPanel.Controls.Add(externalFragLabel);
+                isPaused = true;
+                playButton.Refresh();
+            }
             secondsElapsed++;
+        }
+
+        public int getFreeMemory(int process)
+        {
+            int freeMemory = 0;
+            for (int j = 100; j < memorySize; j++)
+            {
+                if (memoryConfiguration[j] == 0)
+                {
+                    if (processIDEntered != 0) freeMemory = 0;
+                    freeMemory++;
+                    processIDEntered = 0;
+
+                    /*if (memoryConfiguration[j - 1] == 0)
+                    {
+                        freeMemory++;
+                        processIDEntered = 0;
+                    }
+                    else if ((j + 1 == memorySize || memoryConfiguration[j + 1] != processIDEntered) && memoryConfiguration[j-1] == processIDEntered) freeMemory++;
+                    else freeMemory = 0;*/
+                }
+                else
+                {
+                    for (int k = 1; k <= processNumber; k++)
+                    {
+                        if (memoryConfiguration[j] == k && isFinished[k - 1])
+                        {
+                            if (!isBeingEntered[k - 1])
+                            {
+                                if (processIDEntered != k) freeMemory = 0;
+                                freeMemory++;
+                                processIDEntered = k;
+                            }
+                            else
+                            {
+                                freeMemory = 0;
+                                break;
+                            }
+                            /*if (memoryConfiguration[j - 1] == k && isFinished[k - 1] && !isBeingEntered[k - 1])
+                            {
+                                freeMemory++;
+                                processIDEntered = k;
+                            }
+                            else if ((j + 1 == memorySize || memoryConfiguration[j + 1] != processIDEntered) && memoryConfiguration[j - 1] == processIDEntered) freeMemory++;
+                            else freeMemory = 0;*/
+
+                        }
+                    }
+                }
+                if (freeMemory == memoryRequests[process])
+                {
+                    processEndLocation = j+1;
+                    break;
+                }
+            }
+            return freeMemory;
         }
 
         public void addEvent(int i, string eventString)
@@ -813,10 +974,9 @@ namespace FirstFitMMCSimulation
                 label.Font = new Font("Calida Code", 18, FontStyle.Bold);
                 label.ForeColor = foreColor;
                 label.Size = TextRenderer.MeasureText(label.Text, label.Font);
-                label.Location = new Point(eventList.Left + eventList.Width / 2 - label.Width / 2, eventList.Top - label.Height - 25);
+                label.Location = new Point(eventList.Left + eventList.Width / 2 - label.Width / 2, eventList.Top - label.Height - 10);
                 thirdPanel.Controls.Add(label);
             }
-
         }
         private void PaintBorder(object? sender, PaintEventArgs e)
         {
@@ -827,29 +987,18 @@ namespace FirstFitMMCSimulation
 
             using (Pen pen = new Pen(ColorTranslator.FromHtml("#353535"), 5))
             {
-                /*e.Graphics.DrawLine(pen, 0, 0, 0, panel.Height);
-                e.Graphics.DrawLine(pen, 0, 0, panel.Width, 0);
-                e.Graphics.DrawLine(pen, panel.Width, 0, panel.Width-1, panel.Height-1);*/
                 if (index != processNumber)
                 {
-                    using (SolidBrush brush = new SolidBrush(Color.DarkOrange))
-                    {
-                        if (isFinished[index] && isBeingEntered[index]) graphics.FillRectangle(brush, new Rectangle(0, -1, panel.Width, panel.Height));
-                    }
-                    using (SolidBrush brush = new SolidBrush(memoryConfigPanel.BackColor))
-                    {
-                        if (isFinished[index] && !isBeingEntered[index]) graphics.FillRectangle(brush, new Rectangle(0, -1, panel.Width, panel.Height));
-                    }
+                    using (SolidBrush brush = new SolidBrush(Color.DarkOrange)) if (isFinished[index] && isBeingEntered[index]) 
+                            graphics.FillRectangle(brush, new Rectangle(0, -1, panel.Width, panel.Height));
+                    using (SolidBrush brush = new SolidBrush(memoryConfigPanel.BackColor)) if (isFinished[index] && !isBeingEntered[index]) 
+                            graphics.FillRectangle(brush, new Rectangle(0, -1, panel.Width, panel.Height));
                 }
                 if (panel.Location.Y == 0 && processIDEntered == 0 && repaintedBorder == 0) e.Graphics.DrawRectangle(pen, new Rectangle(0, 0, panel.Width - 1, panel.Height - 1));
                 else if (repaintedBorder != 0) e.Graphics.DrawRectangle(pen, new Rectangle(0, -3, panel.Width - 1, panel.Height + 2));
                 if (index == processNumber) e.Graphics.DrawRectangle(pen, new Rectangle(0, 0, panel.Width - 1, panel.Height - 1));
-
-
                 repaintedBorder++;
-
             }
-
         }
         private void PaintBorderConfig(object? sender, PaintEventArgs e)
         {
@@ -864,52 +1013,10 @@ namespace FirstFitMMCSimulation
             }
             using (Pen pen = new Pen(ColorTranslator.FromHtml("#353535"), 5))
             {
-                /*e.Graphics.DrawLine(pen, 0, 0, 0, panel.Height);
-                e.Graphics.DrawLine(pen, 0, 0, panel.Width, 0);
-                e.Graphics.DrawLine(pen, panel.Width, 0, panel.Width-1, panel.Height-1);*/
-                if (panel.Location.Y == 0)
-                {
-                    e.Graphics.DrawRectangle(pen, new Rectangle(0, 0, panel.Width - 1, panel.Height - 1));
-
-                }
-                else
-                {
-                    e.Graphics.DrawRectangle(pen, new Rectangle(0, -3, panel.Width - 1, panel.Height + 2));
-
-                }
+                if (panel.Location.Y == 0)  e.Graphics.DrawRectangle(pen, new Rectangle(0, 0, panel.Width - 1, panel.Height - 1));
+                else e.Graphics.DrawRectangle(pen, new Rectangle(0, -3, panel.Width - 1, panel.Height + 2));
             }
             processConfigPanels[processNumber].BackColor = osProcessColor;
-
-
-        }
-
-        public void moveSlides()
-        {
-            try
-            {
-                for (int i = 0; i < this.Width; i += 16)
-                {
-                    secondPanel.Invoke((MethodInvoker)delegate
-                    {
-                        secondPanel.Location = new Point(secondPanel.Location.X - 16, secondPanel.Location.Y);
-                    });
-                    firstPanel.Invoke((MethodInvoker)delegate
-                    {
-                        firstPanel.Location = new Point(firstPanel.Location.X - 16, firstPanel.Location.Y);
-                    });
-
-                }
-
-            }
-            catch (Exception ex)
-            {
-            }
-
-        }
-
-        private void nextButton_Click(object sender, EventArgs e)
-        {
-
         }
     }
 }

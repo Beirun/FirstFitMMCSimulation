@@ -1,6 +1,6 @@
 ﻿namespace FirstFitMMCSimulation
 {
-    partial class Form1
+    partial class FirstFitSimulation
     {
         /// <summary>
         ///  Required designer variable.
@@ -42,7 +42,7 @@
             secondPanel = new Panel();
             proceedButton = new Button();
             thirdPanel = new Panel();
-            roundButton1 = new RoundButton();
+            playButton = new RoundButton();
             waitingProcessPanel = new FlowLayoutPanel();
             timerLabel = new Label();
             memoryConfig = new Panel();
@@ -174,7 +174,7 @@
             // 
             // thirdPanel
             // 
-            thirdPanel.Controls.Add(roundButton1);
+            thirdPanel.Controls.Add(playButton);
             thirdPanel.Controls.Add(waitingProcessPanel);
             thirdPanel.Controls.Add(timerLabel);
             thirdPanel.Controls.Add(memoryConfig);
@@ -183,14 +183,13 @@
             thirdPanel.Size = new Size(311, 284);
             thirdPanel.TabIndex = 2;
             // 
-            // roundButton1
+            // playButton
             // 
-            roundButton1.Location = new Point(14, 118);
-            roundButton1.Name = "roundButton1";
-            roundButton1.Size = new Size(100, 100);
-            roundButton1.TabIndex = 4;
-            roundButton1.Text = "roundButton1";
-            roundButton1.UseVisualStyleBackColor = true;
+            playButton.Location = new Point(14, 118);
+            playButton.Name = "playButton";
+            playButton.Size = new Size(100, 100);
+            playButton.TabIndex = 4;
+            playButton.UseVisualStyleBackColor = true;
             // 
             // waitingProcessPanel
             // 
@@ -216,7 +215,7 @@
             memoryConfig.Size = new Size(80, 104);
             memoryConfig.TabIndex = 0;
             // 
-            // Form1
+            // FirstFitSimulation
             // 
             AutoScaleDimensions = new SizeF(8F, 20F);
             AutoScaleMode = AutoScaleMode.Font;
@@ -224,8 +223,8 @@
             Controls.Add(thirdPanel);
             Controls.Add(secondPanel);
             Controls.Add(firstPanel);
-            Name = "Form1";
-            Text = "Form1";
+            Name = "FirstFitSimulation";
+            Text = "First Fit Simulation";
             firstPanel.ResumeLayout(false);
             firstPanel.PerformLayout();
             memorySizePanel.ResumeLayout(false);
@@ -257,6 +256,6 @@
         private Label errorProcess;
         private Label errorMemory;
         private FlowLayoutPanel waitingProcessPanel;
-        private RoundButton roundButton1;
+        private RoundButton playButton;
     }
 }
