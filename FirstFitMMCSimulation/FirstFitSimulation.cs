@@ -1,4 +1,7 @@
+using System;
 using System.Drawing.Drawing2D;
+using System.Numerics;
+using System.Reflection;
 
 namespace FirstFitMMCSimulation
 {
@@ -210,10 +213,13 @@ namespace FirstFitMMCSimulation
         public void secondSlide()
         {
             secondPanel.BringToFront();
+            secondPanel.Controls.Clear();
+            secondPanel.Controls.Add(proceedButton);
             secondPanel.BackColor = backColor;
             secondPanel.Location = new Point(0, 0);
             secondPanel.Dock = DockStyle.None;
             secondPanel.Size = new Size(firstPanel.Width, firstPanel.Height);
+            secondPanel.MouseClick += (sender, e) => { secondPanel.Focus(); };
 
             Panel backButton = new Panel();
             backButton.Paint += BackButton_Paint;
@@ -398,15 +404,44 @@ namespace FirstFitMMCSimulation
         private void AddMSEC_Leave(object? sender, EventArgs e)
         {
             TextBox? textBox = sender as TextBox;
-            int i = (int)textBox.Tag;
+            int index = (int)textBox.Tag;
             textBox.Text = textBox.Text.Trim();
             try { 
                 int number = Convert.ToInt32(textBox.Text);
                 if(number < 0) textBox.ForeColor = Color.Red;
-                if (textBox == completionTimeTextBox[i])
+                if (textBox == completionTimeTextBox[index])
                 {
-                    if (Convert.ToInt32(allocationTimeTextBox[i].Text.Substring(0, allocationTimeTextBox[i].TextLength - 5).Trim()) > 
-                        Convert.ToInt32(completionTimeTextBox[i].Text)) completionTimeTextBox[i].ForeColor = Color.Red;
+                    int lowestAllocation = 0;
+                    int completion = 0;
+                    int request = 0;
+                    int[] arr = new int[processNumber];
+                    for (int i = 0; i < processNumber; i++)
+                    {
+                        int allocation = Convert.ToInt32(allocationTimeTextBox[i].Text.Substring(0, allocationTimeTextBox[i].TextLength - 5).Trim());
+                        arr[i] = allocation;
+                        if (lowestAllocation >= allocation)
+                        {
+                            lowestAllocation = allocation;
+                            request = Convert.ToInt32(memoryRequestTextBox[i].Text.Substring(0, memoryRequestTextBox[i].TextLength - 3).Trim());
+                            if (index == i) completion = Convert.ToInt32(completionTimeTextBox[i].Text.Trim());
+                            else if (completionTimeTextBox[i].Text.Trim() != "" && completionTimeTextBox[i].Text.Contains("msec")) completion = Convert.ToInt32(completionTimeTextBox[i].Text.Substring(0, completionTimeTextBox[i].TextLength - 5).Trim());
+                        }
+                    }
+                    Array.Sort(arr);
+                    int currentIndex = index;
+                    for(int i = currentIndex; i >=0;i--)
+                    {
+                        int currentRequest = Convert.ToInt32(memoryRequestTextBox[i].Text.Substring(0, memoryRequestTextBox[i].TextLength - 3).Trim());
+                        int currentAllocation = Convert.ToInt32(allocationTimeTextBox[i].Text.Substring(0, allocationTimeTextBox[i].TextLength - 5).Trim());
+                        int currentCompletion = 0;
+                        if (index == i) currentCompletion = Convert.ToInt32(completionTimeTextBox[i].Text.Trim());
+                        else if (completionTimeTextBox[i].Text.Trim() != "" && completionTimeTextBox[i].Text.Contains("msec")) currentCompletion = Convert.ToInt32(completionTimeTextBox[i].Text.Substring(0, completionTimeTextBox[i].TextLength - 5).Trim());
+
+                        if (currentCompletion < completion && (request + currentRequest > memorySize - 100 && arr[1] == currentAllocation)) completionTimeTextBox[i].ForeColor = Color.Red;
+
+                    }
+                    if (Convert.ToInt32(allocationTimeTextBox[index].Text.Substring(0, allocationTimeTextBox[index].TextLength - 5).Trim()) > 
+                        Convert.ToInt32(completionTimeTextBox[index].Text)) completionTimeTextBox[index].ForeColor = Color.Red;
                 }
             }
             catch { textBox.ForeColor = Color.Red; }
@@ -446,6 +481,10 @@ namespace FirstFitMMCSimulation
         }
         private void proceedButton_Click(object sender, EventArgs e)
         {
+            for(int i = 0; i < processNumber; i++)
+            {
+                if (memoryRequestTextBox[i].ForeColor == Color.Red || allocationTimeTextBox[i].ForeColor == Color.Red || completionTimeTextBox[i].ForeColor == Color.Red) return;
+            }
             thirdPanel.Size = new Size(firstPanel.Width, firstPanel.Height);
             playButton.MouseClick += PlayButton_MouseClick;
             playButton.Paint += PlayButton_Paint;
@@ -489,10 +528,39 @@ namespace FirstFitMMCSimulation
                 }catch { return; }
             }
             for (int i = 0; i < processNumber; i++) if (longestCompletionTime < completionTimes[i]) longestCompletionTime = completionTimes[i];
+            int lowestAllocation = 0;
+            int completion = 0;
+            int request = 0;
+            int[] arr = new int[processNumber];
+            for (int i = 0; i < processNumber; i++)
+            {
+                int allocation = allocationTimes[i];
+                arr[i] = allocation;
+                if (lowestAllocation >= allocation)
+                {
+                    lowestAllocation = allocation;
+                    request = memoryRequests[i];
+                    completion = completionTimes[i];
+                }
+            }
+            Array.Sort(arr);
+            bool isLessThanCompletion = false;
+            for (int i = 0; i < processNumber; i++)
+            {
+                int currentRequest = memoryRequests[i];
+                int currentAllocation = allocationTimes[i];
+                if (completionTimes[i] < completion && request + currentRequest > memorySize - 100 && arr[1] == currentAllocation)
+                {
+                    completionTimeTextBox[i].ForeColor = Color.Red;
+                    isLessThanCompletion = true;
+                }
+            }
+            if (isLessThanCompletion) return;
             thirdSlide();
         }
         public void thirdSlide()
         {
+            thirdPanel.Size = new Size(firstPanel.Width, firstPanel.Height);
             secondsElapsed = 0;
             thirdPanel.BringToFront();
             thirdPanel.Controls.Clear();
@@ -895,13 +963,6 @@ namespace FirstFitMMCSimulation
                     freeMemory++;
                     processIDEntered = 0;
 
-                    /*if (memoryConfiguration[j - 1] == 0)
-                    {
-                        freeMemory++;
-                        processIDEntered = 0;
-                    }
-                    else if ((j + 1 == memorySize || memoryConfiguration[j + 1] != processIDEntered) && memoryConfiguration[j-1] == processIDEntered) freeMemory++;
-                    else freeMemory = 0;*/
                 }
                 else
                 {
@@ -920,14 +981,6 @@ namespace FirstFitMMCSimulation
                                 freeMemory = 0;
                                 break;
                             }
-                            /*if (memoryConfiguration[j - 1] == k && isFinished[k - 1] && !isBeingEntered[k - 1])
-                            {
-                                freeMemory++;
-                                processIDEntered = k;
-                            }
-                            else if ((j + 1 == memorySize || memoryConfiguration[j + 1] != processIDEntered) && memoryConfiguration[j - 1] == processIDEntered) freeMemory++;
-                            else freeMemory = 0;*/
-
                         }
                     }
                 }
